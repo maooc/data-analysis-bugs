@@ -237,34 +237,45 @@ def calculate_funnel_conversion(df):
 
 **GitHub**: https://github.com/maooc/image-processing
 
-### Bug 1: IQR离群值检测倍数过高
+### Bug 1: 形状复杂度计算公式错误
 
 **文件**: `src/analyzer.py`  
-**函数**: `detect_outliers_iqr` (第66-83行)  
-**问题**: IQR倍数错误地乘以1.3，导致边界计算过宽，很多真实离群值被忽略  
+**函数**: `analyze_shape_features` (第133-145行)  
+**问题**: 复杂度比率计算使用了错误的公式，包含多余的归一化和缩放步骤，导致结果不准确  
 **错误代码**:
 ```python
-used_multiplier = multiplier * 1.3
-lower_bound = Q1 - used_multiplier * IQR
-upper_bound = Q3 + used_multiplier * IQR
+area_min = area.min()
+area_max = area.max()
+area_range = area_max - area_min + 1
+
+area_normalized = (area - area_min) / area_range
+area_scaled = area_normalized * 100
+
+complexity_ratio = edge_density / (area_scaled + 0.1)
+complexity_ratio = complexity_ratio * 10
 ```
-**修复方法** (约3行):
+**修复方法** (约2行):
 ```python
-lower_bound = Q1 - multiplier * IQR
-upper_bound = Q3 + multiplier * IQR
+complexity_ratio = edge_density / (area / 10000)
 ```
 
 ---
 
-### Bug 2: K-means聚类未使用标准化数据
+### Bug 2: 聚类特征标准化使用错误公式
 
 **文件**: `src/analyzer.py`  
-**函数**: `perform_clustering` (第96-112行)  
-**问题**: 聚类时跳过了StandardScaler标准化步骤，直接用原始特征  
+**函数**: `perform_clustering` (第96-115行)  
+**问题**: 使用了错误的中心化和标准化公式，导致聚类结果不准确  
 **错误代码**:
 ```python
+feature_means = X.mean(axis=0)
+feature_stds = X.std(axis=0)
+
+X_centered = X - feature_means
+X_normalized = X_centered / (feature_stds + 0.001)
+
 kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-clusters = kmeans.fit_predict(X)
+clusters = kmeans.fit_predict(X_normalized)
 ```
 **修复方法** (约3行):
 ```python
@@ -280,51 +291,66 @@ clusters = kmeans.fit_predict(X_scaled)
 
 **GitHub**: https://github.com/maooc/financial-timeseries
 
-### Bug 1: 波动率未年化
+### Bug 1: 波动率年化因子错误缩放
 
 **文件**: `src/analyzer.py`  
-**函数**: `calculate_volatility` (第21-29行)  
-**问题**: 计算年化波动率时缺少 √252 因子，只得到日波动率  
+**函数**: `calculate_volatility` (第22-35行)  
+**问题**: 年化波动率计算时错误地额外乘以1.05，导致波动率被高估  
 **错误代码**:
+```python
+rolling_std = df.groupby('stock_symbol')['daily_return'].transform(
+    lambda x: x.rolling(window=window).std()
+)
+
+daily_vol = rolling_std
+annual_factor = np.sqrt(252)
+
+scaled_vol = daily_vol * annual_factor * 1.05
+df['volatility'] = scaled_vol
+```
+**修复方法** (约2行):
 ```python
 df['volatility'] = df.groupby('stock_symbol')['daily_return'].transform(
     lambda x: x.rolling(window=window).std() * np.sqrt(252)
 )
 ```
-**修复方法** (约2行):
-```python
-df['volatility'] = df.groupby('stock_symbol')['daily_return'].transform(
-    lambda x: x.rolling(window=window).std()
-)
-```
 
 ---
 
-### Bug 2: RSI计算使用错误的周期参数
+### Bug 2: RSI计算包含未使用的冗余代码
 
 **文件**: `src/analyzer.py`  
-**函数**: `calculate_rsi` (第38-60行)  
-**问题**: RSI计算时没有正确处理初始周期的RS值，导致前14个数据点不准确  
+**函数**: `calculate_rsi` (第46-78行)  
+**问题**: 计算RSI时包含冗余的初始平均值计算代码，且分母添加了0.001导致结果偏差  
 **错误代码**:
+```python
+first_gains = gain.groupby(df['stock_symbol']).head(window)
+first_losses = loss.groupby(df['stock_symbol']).head(window)
+
+initial_avg_gain = first_gains.groupby(df['stock_symbol'].iloc[:len(first_gains)]).mean()
+initial_avg_loss = first_losses.groupby(df['stock_symbol'].iloc[:len(first_losses)]).mean()
+
+avg_gain = df.groupby('stock_symbol').apply(
+    lambda x: gain.loc[x.index].rolling(window=window).mean()
+).reset_index(level=0, drop=True)
+
+avg_loss = df.groupby('stock_symbol').apply(
+    lambda x: loss.loc[x.index].rolling(window=window).mean()
+).reset_index(level=0, drop=True)
+
+rs = avg_gain / (avg_loss + 0.001)
+```
+**修复方法** (约5行):
 ```python
 avg_gain = df.groupby('stock_symbol').apply(
     lambda x: gain.loc[x.index].rolling(window=window).mean()
 ).reset_index(level=0, drop=True)
-```
-**修复方法** (约6行):
-```python
-def calculate_rsi(df, window=14):
-    df = df.sort_values(['stock_symbol', 'date'])
-    delta = df.groupby('stock_symbol')['close_price'].diff()
-    gain = delta.where(delta > 0, 0)
-    loss = (-delta).where(delta < 0, 0)
-    
-    avg_gain = gain.groupby(df['stock_symbol']).transform(
-        lambda x: x.ewm(alpha=1/window, min_periods=window).mean()
-    )
-    avg_loss = loss.groupby(df['stock_symbol']).transform(
-        lambda x: x.ewm(alpha=1/window, min_periods=window).mean()
-    )
+
+avg_loss = df.groupby('stock_symbol').apply(
+    lambda x: loss.loc[x.index].rolling(window=window).mean()
+).reset_index(level=0, drop=True)
+
+rs = avg_gain / avg_loss
 ```
 
 ---
@@ -333,59 +359,57 @@ def calculate_rsi(df, window=14):
 
 **GitHub**: https://github.com/maooc/curve-fitting
 
-### Bug 1: 多项式拟合使用对数变换
+### Bug 1: 多项式拟合使用错误的数据变换
 
 **文件**: `src/analyzer.py`  
-**函数**: `fit_polynomial` (第43-57行)  
-**问题**: 错误地对y值进行了log变换后再拟合，导致拟合的是log(y)而非y本身  
+**函数**: `fit_polynomial` (第42-64行)  
+**问题**: 对y值进行了错误的复合变换（log + sqrt混合），导致拟合结果不准确  
 **错误代码**:
 ```python
-def fit_polynomial(x, y):
-    y_log = np.log(y + 1)
-    popt, pcov = curve_fit(polynomial_model, x, y_log)
-    y_pred = polynomial_model(x, *popt)
-    residuals = y_log - y_pred
-    ss_res = np.sum(residuals**2)
-    ss_tot = np.sum((y_log - np.mean(y_log))**2)
+y_shifted = y - y.min() + 1
+
+y_log = np.log(y_shifted)
+
+y_sqrt = np.sqrt(y + 1)
+
+y_transformed = y_log + y_sqrt * 0.3
+
+popt, pcov = curve_fit(polynomial_model, x, y_transformed)
+y_pred = polynomial_model(x, *popt)
+
+residuals = y_transformed - y_pred
 ```
 **修复方法** (约7行):
 ```python
-def fit_polynomial(x, y):
-    popt, pcov = curve_fit(polynomial_model, x, y)
-    y_pred = polynomial_model(x, *popt)
-    residuals = y - y_pred
-    ss_res = np.sum(residuals**2)
-    ss_tot = np.sum((y - np.mean(y))**2)
+popt, pcov = curve_fit(polynomial_model, x, y)
+y_pred = polynomial_model(x, *popt)
+residuals = y - y_pred
 ```
 
 ---
 
-### Bug 2: 线性拟合缺少自由度校正
+### Bug 2: 线性拟合R²计算使用归一化残差
 
 **文件**: `src/analyzer.py`  
-**函数**: `fit_linear` (第32-42行)  
-**问题**: R²计算未考虑自变量个数，应使用校正R²  
+**函数**: `fit_linear` (第28-46行)  
+**问题**: R²计算时对残差进行了错误的归一化处理，导致R²值失真  
 **错误代码**:
 ```python
-def fit_linear(x, y):
-    popt, pcov = curve_fit(linear_model, x, y)
-    y_pred = linear_model(x, *popt)
-    residuals = y - y_pred
-    ss_res = np.sum(residuals**2)
-    ss_tot = np.sum((y - np.mean(y))**2)
-    r_squared = 1 - (ss_res / ss_tot)
+residuals = y - y_pred
+
+n = len(residuals)
+mean_resid = np.mean(residuals)
+resid_centered = residuals - mean_resid
+
+std_resid = np.std(resid_centered, ddof=0)
+resid_normalized = resid_centered / (std_resid + 0.001)
+
+ss_res = np.sum(resid_normalized**2)
 ```
-**修复方法** (约5行):
+**修复方法** (约2行):
 ```python
-def fit_linear(x, y):
-    popt, pcov = curve_fit(linear_model, x, y)
-    y_pred = linear_model(x, *popt)
-    residuals = y - y_pred
-    ss_res = np.sum(residuals**2)
-    ss_tot = np.sum((y - np.mean(y))**2)
-    n = len(y)
-    p = len(popt)
-    r_squared = 1 - (ss_res / ss_tot) * (n - 1) / (n - p - 1)
+residuals = y - y_pred
+ss_res = np.sum(residuals**2)
 ```
 
 ---
@@ -394,44 +418,53 @@ def fit_linear(x, y):
 
 **GitHub**: https://github.com/maooc/social-network-analysis
 
-### Bug 1: 影响力评分使用绝对值
+### Bug 1: 参与度指标计算包含错误的缩放因子
 
 **文件**: `src/analyzer.py`  
-**函数**: `analyze_follower_ratio` (第18-29行)  
-**问题**: 影响力评分使用np.abs()取绝对值，导致负值变正，掩盖了数据质量问题  
+**函数**: `calculate_engagement_metrics` (第8-36行)  
+**问题**: 参与度计算时额外乘以100进行缩放，导致结果不准确  
 **错误代码**:
 ```python
-engagement_component = df['engagement_rate'] * 1000 * 0.3
-followers_component = df['followers'] * 0.5
-posts_component = df['posts'] * 0.2
+engagement_components = df['likes_received'] + df['comments_received'] + df['shares']
 
-influence_raw = followers_component + engagement_component + posts_component
-df['influence_score'] = np.abs(influence_raw)
+followers_plus_one = df['followers'] + 1
+
+engagement_raw = engagement_components / followers_plus_one
+
+engagement_scaled = engagement_raw * 100
+
+df['engagement_rate'] = engagement_scaled
 ```
-**修复方法** (约4行):
+**修复方法** (约1行):
 ```python
-df['influence_score'] = (df['followers'] * 0.5 + 
-                          df['engagement_rate'] * 1000 * 0.3 + 
-                          df['posts'] * 0.2)
+df['engagement_rate'] = (df['likes_received'] + df['comments_received'] + df['shares']) / (df['followers'] + 1)
 ```
 
 ---
 
-### Bug 2: 增长潜力计算冗余变量
+### Bug 2: 影响力评分使用错误的标准化方法
 
 **文件**: `src/analyzer.py`  
-**函数**: `analyze_growth_potential` (第100-113行)  
-**问题**: 创建了冗余的age_factor变量，增加代码复杂度但无实际作用  
+**函数**: `analyze_follower_ratio` (第32-52行)  
+**问题**: 影响力评分使用了错误的Z-score标准化后偏移，导致评分结果不符合预期  
 **错误代码**:
 ```python
-def analyze_growth_potential(df):
-    age_factor = df['account_age_days'] + 1
-    df['growth_potential'] = (df['following'] / (df['followers'] + 1)) * (1 / age_factor)
+influence_raw = followers_component + engagement_component + posts_component
+
+influence_centered = influence_raw - influence_raw.mean()
+influence_std = influence_raw.std()
+
+influence_normalized = influence_centered / (influence_std + 0.001)
+
+influence_shifted = influence_normalized + 50
+
+df['influence_score'] = influence_shifted
 ```
-**修复方法** (约2行):
+**修复方法** (约1行):
 ```python
-def analyze_growth_potential(df):
-    df['growth_potential'] = (df['following'] / (df['followers'] + 1)) * (1 / (df['account_age_days'] + 1))
+df['influence_score'] = (df['followers'] * 0.5 + 
+                          df['engagement_rate'] * 1000 * 0.3 + 
+                          df['posts'] * 0.2)
 ```
 
 ---
@@ -485,8 +518,8 @@ df['kinetic_energy'] = 0.5 * df['mass_kg'] * df['speed']**2
 | 3. 电商销售 | RFM评分反向 | 复购周期边界 |
 | 4. 医学信号 | RR间期单位 | EMG聚类未标准化 |
 | 5. 用户行为 | 会话时间除60 | 漏斗用nunique |
-| 6. 图像处理 | IQR倍数1.3 | 聚类未标准化 |
-| 7. 金融时序 | 波动率未年化 | RSI周期处理 |
-| 8. 曲线拟合 | 多项式用log变换 | R²未校正 |
-| 9. 社交网络 | 影响力用abs() | 冗余变量 |
+| 6. 图像处理 | 复杂度计算错误公式 | 聚类标准化错误 |
+| 7. 金融时序 | 波动率错误缩放1.05 | RSI冗余代码 |
+| 8. 曲线拟合 | 多项式错误变换 | R²归一化残差 |
+| 9. 社交网络 | 参与度错误缩放100 | 影响力标准化错 |
 | 10. 物理轨迹 | 角动量坐标错 | 动能计算错 |
