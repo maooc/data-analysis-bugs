@@ -6,6 +6,8 @@
 
 ## 项目1: 股票数据分析 (stock-analysis)
 
+**GitHub**: https://github.com/maooc/stock-analysis
+
 ### Bug 1: 移动平均线使用未来数据
 
 **文件**: `src/analyzer.py`  
@@ -45,6 +47,8 @@ volatility[stock] = stock_data['volatility'].iloc[-1]
 ---
 
 ## 项目2: 气候数据分析 (climate-analysis)
+
+**GitHub**: https://github.com/maooc/climate-analysis
 
 ### Bug 1: 月份偏移导致季节模式错误
 
@@ -90,6 +94,8 @@ index += 0.00072546 * t * h**2 + -0.000003582 * t**2 * h**2
 
 ## 项目3: 电商销售数据分析 (ecommerce-analysis)
 
+**GitHub**: https://github.com/maooc/ecommerce-analysis
+
 ### Bug 1: RFM分析中R分数评分反向
 
 **文件**: `src/analyzer.py`  
@@ -128,6 +134,8 @@ rfm = df.groupby('customer_id').agg({
 ---
 
 ## 项目4: 医学信号处理分析 (medical-signal)
+
+**GitHub**: https://github.com/maooc/medical-signal
 
 ### Bug 1: RR间期单位错误（毫秒 vs 秒）
 
@@ -180,6 +188,8 @@ def perform_clustering(features, n_clusters=3):
 
 ## 项目5: 用户行为数据分析 (user-behavior)
 
+**GitHub**: https://github.com/maooc/user-behavior
+
 ### Bug 1: 会话持续时间单位错误
 
 **文件**: `src/analyzer.py`  
@@ -225,6 +235,8 @@ def calculate_funnel_conversion(df):
 
 ## 项目6: 图像处理与特征提取 (image-processing)
 
+**GitHub**: https://github.com/maooc/image-processing
+
 ### Bug 1: IQR离群值检测倍数过高
 
 **文件**: `src/analyzer.py`  
@@ -265,6 +277,8 @@ clusters = kmeans.fit_predict(X_scaled)
 ---
 
 ## 项目7: 金融时间序列分析 (financial-timeseries)
+
+**GitHub**: https://github.com/maooc/financial-timeseries
 
 ### Bug 1: 波动率未年化
 
@@ -316,6 +330,8 @@ def calculate_rsi(df, window=14):
 ---
 
 ## 项目8: 实验数据曲线拟合 (curve-fitting)
+
+**GitHub**: https://github.com/maooc/curve-fitting
 
 ### Bug 1: 多项式拟合使用对数变换
 
@@ -376,6 +392,8 @@ def fit_linear(x, y):
 
 ## 项目9: 社交网络数据分析 (social-network)
 
+**GitHub**: https://github.com/maooc/social-network-analysis
+
 ### Bug 1: 影响力评分使用绝对值
 
 **文件**: `src/analyzer.py`  
@@ -419,6 +437,8 @@ def analyze_growth_potential(df):
 ---
 
 ## 项目10: 物理运动轨迹分析 (physics-trajectory)
+
+**GitHub**: https://github.com/maooc/physics-trajectory
 
 ### Bug 1: 角动量计算坐标顺序错误
 
